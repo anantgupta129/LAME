@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Any, Union
 
 import torch
 import torch.nn as nn
@@ -49,16 +49,18 @@ class LAME(nn.Module):
     def __init__(
         self,
         llm_id: str,
-        vision_tower,
-        image_projector,
+        vision_tower: Any,
+        image_projector: nn.Module,
         audio_model_id: Union[str, None],
+        max_length: int = 1024,
         **kwargs
     ) -> None:
         super().__init__()
 
         self.llm_id = llm_id
         self.vision_tower = vision_tower
-        self.image_projector = image_projector
+        self.mm_image_projector = image_projector
+        self.max_length = max_length
         self.kwargs = kwargs
 
         self._load_llm()
@@ -67,7 +69,11 @@ class LAME(nn.Module):
 
     def _load_llm(self):
         self.llm = AutoModelForCausalLM.from_pretrained(
-            self.llm_id, trust_remote_code=True, torch_dtype="auto", **self.kwargs
+            self.llm_id,
+            trust_remote_code=True,
+            torch_dtype="auto",
+            max_length=self.max_length,
+            **self.kwargs
         )
         self.llm_tokenizer = AutoTokenizer.from_pretrained(self.llm_id, trust_remote_code=True)
 
@@ -76,7 +82,7 @@ class LAME(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.vision_tower(x)
-        x = self.image_projector(x)
+        x = self.mm_image_projector(x)
         x = self.llm(x)
 
         return x
