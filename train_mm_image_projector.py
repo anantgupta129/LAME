@@ -87,7 +87,7 @@ def evaluate_one_epoch(
 
     losses = torch.zeros(len(loader), device=args.device)
     with torch.no_grad():
-        for idx, data in enumerate(tqdm(loader)):
+        for idx, data in enumerate(loader):
             images = data["image"].to(args.device)
             target = data["target"].to(args.device)
 
