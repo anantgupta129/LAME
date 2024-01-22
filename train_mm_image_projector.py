@@ -39,7 +39,7 @@ class TrainingArguments:
     save_dir: Optional[str] = field(default="checkpoints")
     num_epochs: int = field(default=1)
     lr: float = field(default=1e-4)
-    weight_decay: float = field(default=0.01)
+    weight_decay: float = field(default=0.001)
     device: str = field(default="cuda" if torch.cuda.is_available() else "cpu")
     double_quant: bool = field(
         default=True,
@@ -52,10 +52,16 @@ class TrainingArguments:
     bits: int = field(default=8, metadata={"help": "How many bits to use."})
     num_workers: int = field(default=4)
     pin_memory: bool = field(default=True)
+    scheduler: str = field(default="onecycle")
 
 
 def train_one_epoch(
-    model: nn.Module, optimizer: optim, loader: DataLoader, criterion: nn.Module, args: Any
+    model: nn.Module,
+    optimizer: optim,
+    scheduler: optim.lr_scheduler,
+    loader: DataLoader,
+    criterion: nn.Module,
+    args: Any,
 ):
     model.train()
 
@@ -68,6 +74,7 @@ def train_one_epoch(
         loss = criterion(logits, target)
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         tqdm.set_postfix(loss=loss.item())
 
@@ -136,10 +143,25 @@ def train():
             f"Unsupported optimizer: {args.optim}, add or select from ['adamw', 'adam']"
         )
 
+    if args.scheduler == "onecycle":
+        scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=args.lr,
+            total_steps=len(train_dataloader),
+            epochs=args.num_epochs,
+            pct_start=5 / args.num_epochs,
+            div_factor=100,
+            final_div_factor=100,
+        )
+    elif args.scheduler == "cosine":
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=len(train_dataloader), eta_min=1e-5
+        )
+
     best_loss = torch.inf
     for epoch in range(args.num_epochs):
         print(f"[x] Epoch {epoch}/{args.num_epochs}")
-        train_one_epoch(model, optimizer, train_dataloader, criterion, args)
+        train_one_epoch(model, optimizer, scheduler, train_dataloader, criterion, args)
         val_loss = evaluate_one_epoch(model, val_dataloader, criterion, args)
         if val_loss < best_loss:
             best_loss = val_loss
