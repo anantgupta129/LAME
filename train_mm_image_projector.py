@@ -167,7 +167,7 @@ def train():
         if val_loss < best_loss:
             best_loss = val_loss
             print(f"[x] Best model saved (loss: {best_loss}) ")
-            torch.save(model.mm_image_projector.state_dict(), "best_model.pth")
+            torch.save(model.mm_image_projector.state_dict(), wdir / "mm_image_projection.pth")
 
 
 if __name__ == "__main__":
