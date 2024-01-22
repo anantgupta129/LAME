@@ -86,13 +86,14 @@ def evaluate_one_epoch(
     model.eval()
 
     losses = torch.zeros(len(loader), device=args.device)
-    for idx, data in enumerate(tqdm(loader)):
-        images = data["image"].to(args.device)
-        target = data["target"].to(args.device)
+    with torch.no_grad():
+        for idx, data in enumerate(tqdm(loader)):
+            images = data["image"].to(args.device)
+            target = data["target"].to(args.device)
 
-        logits = model(images)
-        loss = criterion(logits, target)
-        losses[idx] = loss
+            logits = model(images)
+            loss = criterion(logits, target)
+            losses[idx] = loss
 
     loss = torch.mean(losses)
     print("[-] Validation loss: ", loss.item())
