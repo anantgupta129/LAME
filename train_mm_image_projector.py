@@ -111,14 +111,9 @@ def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     args = parser.parse_args()
     wdir = Path(args.save_dir) / "mm_image_projection"
-
     wdir.mkdir(parents=True, exist_ok=True)
 
-    wandb.init(project=args.project_name, name=args.experiment_name)
-    wandb.config.update(args)
-
-    # compute_dtype = (torch.float16 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
-    compute_dtype = torch.float32
+    compute_dtype = getattr(args, "compute_dtype", torch.float32)
     bnb_model_from_pretrained_args = {}
     if args.bits in [4, 8]:
         bnb_model_from_pretrained_args.update(
@@ -138,6 +133,8 @@ def train():
                 ),
             )
         )
+    wandb.init(project=args.project_name, name=args.experiment_name)
+    wandb.config.update(args)
 
     model, mm_image_processor, mm_tokenizer = build_lame(args, **bnb_model_from_pretrained_args)
     train_dataloader, val_dataloader = build_dataloader(args, mm_image_processor, mm_tokenizer)
