@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import transformers
+import wandb
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -53,6 +54,8 @@ class TrainingArguments:
     num_workers: int = field(default=4)
     pin_memory: bool = field(default=True)
     scheduler: str = field(default="onecycle")
+    project_name: Optional[str] = field(default="LAME (LAnguage Multi-Modal Embedded)")
+    experiment_name: Optional[str] = field(default="train_mm_image_projection")
 
 
 def train_one_epoch(
@@ -75,6 +78,7 @@ def train_one_epoch(
         loss.backward()
         optimizer.step()
         scheduler.step()
+        wandb.log({"train_loss": loss.item()}, step=idx)
 
         tqdm.set_postfix(loss=loss.item())
 
@@ -95,6 +99,8 @@ def evaluate_one_epoch(
             loss = criterion(logits, target)
             losses[idx] = loss
 
+            wandb.log({"val_loss": loss.item()}, step=idx)
+
     loss = torch.mean(losses)
     print("[-] Validation loss: ", loss.item())
 
@@ -107,6 +113,9 @@ def train():
     wdir = Path(args.save_dir) / "mm_image_projection"
 
     wdir.mkdir(parents=True, exist_ok=True)
+
+    wandb.init(project=args.project_name, name=args.experiment_name)
+    wandb.config.update(args)
 
     # compute_dtype = (torch.float16 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
     compute_dtype = torch.float32
