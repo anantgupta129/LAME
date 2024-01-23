@@ -39,10 +39,14 @@ class COCOCaptionsDataset(Dataset):
 
         caption = data_dict["sentences"]["raw"]
         caption = self.tokenizer(
-            caption, padding="max_length", truncation=True, max_length=self.max_length
+            caption,
+            padding="max_length",
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
         )
 
-        return {"image": img0, "output": caption["input_ids"]}
+        return {"image": img0, "target": caption["input_ids"]}
 
 
 def build_dataloader(args, image_processor, tokenizer):

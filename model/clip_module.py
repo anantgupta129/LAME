@@ -37,8 +37,8 @@ class CLIPVisionTower(nn.Module):
         super().__init__()
 
         self.model_id = model_id
-        self.mm_vision_select_layer = mm_vision_select_layer
-        self.mm_vision_select_feature = mm_vision_select_feature
+        self.select_layer = mm_vision_select_layer
+        self.select_feature = mm_vision_select_feature
 
         self._load_model()
 

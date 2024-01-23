@@ -83,7 +83,7 @@ class LAME(nn.Module):
         pass
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.vision_tower(x)
+        x = self.vision_tower(x).clone().unsqueeze(1)
         x = self.mm_image_projector(x)
         x = self.llm(x)
 
