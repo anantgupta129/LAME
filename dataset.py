@@ -35,9 +35,9 @@ class COCOCaptionsDataset(Dataset):
         img0 = data_dict["image"]
         img0 = expand2square(img0, tuple(int(x * 255) for x in self.processor.image_mean))
         img0 = img0.convert("RGB")
-        img0 = self.image_processor(images=img0, return_tensors="pt")["pixel_values"][0]
+        img0 = self.processor(images=img0, return_tensors="pt")["pixel_values"][0]
 
-        caption = data_dict["raw"]
+        caption = data_dict["sentences"]["raw"]
         caption = self.tokenizer(
             caption, padding="max_length", truncation=True, max_length=self.max_length
         )
@@ -53,7 +53,7 @@ def build_dataloader(args, image_processor, tokenizer):
         dataset=train_ds,
         tokenizer=tokenizer,
         image_processor=image_processor,
-        max_length=args.max_length,
+        max_length=args.captions_max_length,
     )
     train_dataloader = torch.utils.data.DataLoader(
         trainset,
@@ -67,7 +67,7 @@ def build_dataloader(args, image_processor, tokenizer):
         dataset=val_ds,
         tokenizer=tokenizer,
         image_processor=image_processor,
-        max_length=args.max_length,
+        max_length=args.captions_max_length,
     )
     val_dataloader = torch.utils.data.DataLoader(
         validationset,
