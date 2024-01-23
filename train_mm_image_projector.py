@@ -5,12 +5,11 @@ from typing import Any, Optional
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import transformers
 import wandb
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, HfArgumentParser
 
 from dataset import build_dataloader
 from model import build_lame
@@ -18,6 +17,8 @@ from model import build_lame
 
 @dataclass
 class ModelArguments:
+    """Arguments related to the model configuration."""
+
     version: Optional[str] = field(default="v0")
     llm_model_id: Optional[str] = field(default="microsoft/phi-2")
     vision_model_id: Optional[str] = field(default="wkcn/TinyCLIP-ViT-61M-32-Text-29M-LAION400M")
@@ -29,6 +30,8 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
+    """Arguments related to the dataset."""
+
     dataset_name: str = "HuggingFaceM4/COCO"
     batch_size: int = 256
     captions_max_length: int = field(default=1024)
@@ -36,9 +39,11 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments:
+    """Arguments related to the training process."""
+
     optim: str = field(default="adamw")
     save_dir: Optional[str] = field(default="checkpoints")
-    num_epochs: int = field(default=1)
+    num_epochs: int = field(default=100)
     lr: float = field(default=1e-4)
     weight_decay: float = field(default=0.001)
     device: str = field(default="cuda" if torch.cuda.is_available() else "cpu")
@@ -64,10 +69,10 @@ def train_one_epoch(
     scheduler: optim.lr_scheduler,
     loader: DataLoader,
     criterion: nn.Module,
-    args: Any,
-):
+    args: TrainingArguments,
+) -> None:
+    """Train the model for one epoch."""
     model.train()
-
     for idx, data in enumerate(tqdm(loader)):
         images = data["image"].to(args.device)
         target = data["target"].to(args.device)
@@ -79,16 +84,15 @@ def train_one_epoch(
         optimizer.step()
         scheduler.step()
         wandb.log({"train_loss": loss.item()}, step=idx)
-
         tqdm.set_postfix(loss=loss.item())
 
 
 @torch.inference_mode()
 def evaluate_one_epoch(
-    model: nn.Module, loader: DataLoader, criterion: nn.Module, args: Any
+    model: nn.Module, loader: DataLoader, criterion: nn.Module, args: TrainingArguments
 ) -> torch.Tensor:
+    """Evaluate the model for one epoch."""
     model.eval()
-
     losses = torch.zeros(len(loader), device=args.device)
     with torch.no_grad():
         for idx, data in enumerate(loader):
@@ -98,23 +102,23 @@ def evaluate_one_epoch(
             logits = model(images)
             loss = criterion(logits, target)
             losses[idx] = loss
-
             wandb.log({"val_loss": loss.item()}, step=idx)
 
     loss = torch.mean(losses)
     print("[-] Validation loss: ", loss.item())
-
     return loss
 
 
-def train():
-    parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
+def train() -> None:
+    """Main training function."""
+    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     args = parser.parse_args()
     wdir = Path(args.save_dir) / "mm_image_projection"
     wdir.mkdir(parents=True, exist_ok=True)
 
     compute_dtype = getattr(args, "compute_dtype", torch.float32)
     bnb_model_from_pretrained_args = {}
+
     if args.bits in [4, 8]:
         bnb_model_from_pretrained_args.update(
             dict(
@@ -133,14 +137,23 @@ def train():
                 ),
             )
         )
+
     wandb.init(project=args.project_name, name=args.experiment_name)
     wandb.config.update(args)
 
+    # Build LAME model with the specified arguments and quantization configuration
     model, mm_image_processor, mm_tokenizer = build_lame(args, **bnb_model_from_pretrained_args)
+
+    # Build data loaders for training and validation
     train_dataloader, val_dataloader = build_dataloader(args, mm_image_processor, mm_tokenizer)
+
+    # Define the CrossEntropyLoss criterion
     criterion = nn.CrossEntropyLoss()
+
+    # Freeze the llm parameters
     model.llm.requires_grad_(False)
 
+    # Choose the optimizer based on the specified type in arguments
     if args.optim == "adamw":
         optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     elif args.optim == "adam":
@@ -150,6 +163,7 @@ def train():
             f"Unsupported optimizer: {args.optim}, add or select from ['adamw', 'adam']"
         )
 
+    # Choose the scheduler based on the specified type in arguments
     if args.scheduler == "onecycle":
         scheduler = optim.lr_scheduler.OneCycleLR(
             optimizer,
@@ -164,16 +178,25 @@ def train():
         scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=len(train_dataloader), eta_min=1e-5
         )
+    else:
+        raise NotImplementedError(f"Unsupported scheduler: {args.scheduler}")
 
     best_loss = torch.inf
-    for epoch in range(args.num_epochs):
+    for epoch in range(
+        args.num_epochs
+    ):  # epoch ------------------------------------------------------------------
         print(f"[x] Epoch {epoch}/{args.num_epochs}")
         train_one_epoch(model, optimizer, scheduler, train_dataloader, criterion, args)
         val_loss = evaluate_one_epoch(model, val_dataloader, criterion, args)
+
         if val_loss < best_loss:
             best_loss = val_loss
             print(f"[x] Best model saved (loss: {best_loss}) ")
+
+            # Save the mm_image_projector state dict
             torch.save(model.mm_image_projector.state_dict(), wdir / "mm_image_projection.pth")
+    # end epoch ----------------------------------------------------------------------------------------------------
+    wandb.finish()
 
 
 if __name__ == "__main__":
