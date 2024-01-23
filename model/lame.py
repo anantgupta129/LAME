@@ -75,7 +75,9 @@ class LAME(nn.Module):
             max_length=self.max_length,
             **self.kwargs
         )
-        self.llm_tokenizer = AutoTokenizer.from_pretrained(self.llm_id, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(self.llm_id, trust_remote_code=True)
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        self.llm_tokenizer = tokenizer
 
     def _load_audio_model(self):
         pass
